@@ -1,0 +1,84 @@
+﻿@page "/matches"
+
+@using AdafyExercise.Data
+@using System.Text.Json
+@using System.Text.Json.Serialization;
+@using System.Text.RegularExpressions;
+@inject MatchesListingService MatchesListing
+@inject IHttpClientFactory ClientFactory
+
+
+<div>
+    <h1>Matches</h1>
+</div>
+
+@if (getMatchesError) {
+    <p>Unable to get matches from API. Please try again later.</p>
+}
+else {
+    <label for="filterMatch">Suodata otteluita</label>
+    <input type="text" name="filter" id="filterMatch" @bind-value="filterString" @bind-value:event="oninput" />
+    <table>
+        <thead>
+            <tr>
+                <th>Päivämäärä</th>
+                <th>Joukkueet</th>
+                <th>Tulos</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var match in matchesList) {
+                <tr>
+                    <td>@match.MatchDate</td>
+                    <td>@match.HomeTeam.Name - @match.AwayTeam.Name</td>
+                    <td>@match.HomeGoals - @match.AwayGoals</td>
+                    <td><a href="/matches/@match.Id">Ottelun tiedot</a></td>
+                </tr>
+            }
+        </tbody>
+        <tfoot></tfoot>
+    </table>
+}
+
+@code {
+    //private MatchesListing[] listing;
+    /*
+    protected override async Task OnInitializedAsync() {
+        //listing = await MatchesListing.GetMatches();
+        //MatchesListing.GetMatches();
+        MatchesListingService._GetMatches();
+    }
+    */
+
+    //NOTE: The code for fetching matches data is repeated in all pages
+    //TODO: DRY, put the data fetching code in a separate class
+    private IEnumerable<MatchesListing> matches = Array.Empty<MatchesListing>();
+    private IEnumerable<MatchesListing> matchesList = Array.Empty<MatchesListing>();
+    private bool getMatchesError;
+    private bool shouldRender;
+    private string filterString = "";
+    //private string Search { get { return searchString; } set { searchString = Regex.Replace(); } }
+
+    protected override bool ShouldRender() => shouldRender;
+
+    protected override async Task OnInitializedAsync() {
+        var request = new HttpRequestMessage(HttpMethod.Get, "https://functionapp2018071101324.blob.core.windows.net/data/matches_latest.json");
+
+        var client = ClientFactory.CreateClient();
+
+        var response = await client.SendAsync(request);
+
+        if (response.IsSuccessStatusCode) {
+            using var responseStream = await response.Content.ReadAsStreamAsync();
+            matches = await JsonSerializer.DeserializeAsync<IEnumerable<MatchesListing>>(responseStream);
+            matchesList = matches.ToArray();
+            matchesList = matchesList.Where(x => x.HomeTeam.Name.ToLower().Contains(filterString) || x.AwayTeam.Name.ToLower().Contains(filterString));
+        }
+        else {
+            getMatchesError = true;
+        }
+
+        shouldRender = true;
+    }
+}

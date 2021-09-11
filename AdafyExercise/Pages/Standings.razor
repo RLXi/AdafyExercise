@@ -1,0 +1,169 @@
+﻿@page "/standings"
+
+@using AdafyExercise.Data
+@using System.Text.Json
+@using System.Text.Json.Serialization;
+@inject MatchesListingService MatchesListing
+@inject IHttpClientFactory ClientFactory
+
+<div>
+    <h1>Joukkuetilastot</h1>
+</div>
+<table>
+    <thead>
+        <tr>
+            <th>Joukkueen sijoitus</th>
+            <th>Joukkueen nimi</th>
+            <th>Ottelut</th>
+            <th>Voitot</th>
+            <th>Tasapelit</th>
+            <th>Häviöt</th>
+            <th>Tehdyt maalit</th>
+            <th>Päästetyt maalit</th>
+            <th>Maaliero</th>
+            <th>Pisteet</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (StandingsData stand in standingsList) {
+        <tr>
+            <td>@stand.TeamRanking</td>
+            <td>@stand.TeamName</td>
+            <td>@stand.GamesPlayed</td>
+            <td>@stand.Wins</td>
+            <td>@stand.Ties</td>
+            <td>@stand.Losses</td>
+            <td>@stand.GoalsScored</td>
+            <td>@stand.GoalsAgainst</td>
+            <td>@stand.GoalDifference</td>
+            <td>@stand.Points</td>
+        </tr>
+        }
+    </tbody>
+</table>
+@code {
+    private IEnumerable<MatchesListing> matches = Array.Empty<MatchesListing>();
+    private bool getMatchesError;
+    private bool shouldRender;
+    private IEnumerable<StandingsData> standings = Array.Empty<StandingsData>();
+    private List<StandingsData> standingsList = new List<StandingsData>();
+
+    protected override bool ShouldRender() => shouldRender;
+
+    protected override async Task OnInitializedAsync() {
+        var request = new HttpRequestMessage(HttpMethod.Get, "https://functionapp2018071101324.blob.core.windows.net/data/matches_latest.json");
+
+        var client = ClientFactory.CreateClient();
+
+        var response = await client.SendAsync(request);
+
+        if (response.IsSuccessStatusCode) {
+            using var responseStream = await response.Content.ReadAsStreamAsync();
+            matches = await JsonSerializer.DeserializeAsync<IEnumerable<MatchesListing>>(responseStream);
+
+            foreach (MatchesListing match in matches) {
+                // Add bare standings data for teams
+                if (!standingsList.Any(p => p.TeamId == match.HomeTeam.Id)) {
+                    standingsList.Add(CreateStandingData(match, match.HomeTeam));
+                }
+                if (!standingsList.Any(p => p.TeamId == match.AwayTeam.Id)) {
+                    standingsList.Add(CreateStandingData(match, match.AwayTeam));
+                }
+
+                // Update standings data
+                int homeTeamIndex = standingsList.FindIndex(p => p.TeamId == match.HomeTeam.Id);
+                int awayTeamIndex = standingsList.FindIndex(p => p.TeamId == match.AwayTeam.Id);
+                UpdateStandingData(match, match.HomeTeam, standingsList[homeTeamIndex]);
+                UpdateStandingData(match, match.AwayTeam, standingsList[awayTeamIndex], false);
+            }
+
+            // The match data didn't produce situation, where two teams have equal amount of points.
+            // In order to test this (without writing proper tests), we can improvise a bit
+            //int someTeamIndex = standingsList.FindIndex(p => p.TeamName == "KuPS");
+            //standingsList[someTeamIndex].Points = 48;
+
+            // Sort by points in descending order
+            standingsList.Sort((x, y) => {
+                if (x.Points == y.Points) {
+                    return (x.GoalDifference > y.GoalDifference) ? -1 : 1;
+                }
+                else if (x.Points > y.Points) return -1;
+                return 1;
+            });
+
+            // Update ranking based on order
+            for (int i = 0; i < standingsList.Count(); i++) {
+                standingsList[i].TeamRanking = i + 1;
+            }
+        }
+        else {
+            getMatchesError = true;
+        }
+
+        shouldRender = true;
+    }
+
+    private StandingsData CreateStandingData(MatchesListing match, Team team) {
+        StandingsData newStanding = new StandingsData {
+            TeamId = team.Id,
+            TeamRanking = 0,
+            TeamName = team.Name,
+            GoalsScored = 0,
+            GoalsAgainst = 0,
+            GoalDifference = 0,
+            Wins = 0,
+            Ties = 0,
+            Losses = 0,
+            Points = 0,
+            GamesPlayed = 0
+        };
+
+        return newStanding;
+    }
+
+    // Mutating update, would immutable be better?
+    private void UpdateStandingData(MatchesListing match, Team team, StandingsData data, bool isHome = true) {
+        data.GoalsScored = (isHome) ? data.GoalsScored + match.HomeGoals : data.GoalsScored + match.AwayGoals;
+        data.GoalsAgainst = (isHome) ? data.GoalsAgainst + match.AwayGoals : data.GoalsAgainst + match.HomeGoals;
+        data.GamesPlayed = data.GamesPlayed += 1;
+
+        if (isHome) {
+            data.Wins = (match.HomeGoals > match.AwayGoals) ? data.Wins += 1 : data.Wins;
+            data.Ties = (match.HomeGoals == match.AwayGoals) ? data.Ties += 1 : data.Ties;
+            data.Losses = (match.HomeGoals < match.AwayGoals) ? data.Losses += 1 : data.Losses;
+        }
+        else {
+            data.Wins = (match.AwayGoals > match.HomeGoals) ? data.Wins += 1 : data.Wins;
+            data.Ties = (match.AwayGoals == match.HomeGoals) ? data.Ties += 1 : data.Ties;
+            data.Losses = (match.AwayGoals < match.HomeGoals) ? data.Losses += 1 : data.Losses;
+        }
+
+        data.GoalDifference = data.GoalsScored - data.GoalsAgainst;
+        data.Points = data.Wins * 3 + data.Ties;
+    }
+
+    // Return new StandingsData instead of mutating old
+    private StandingsData NewUpdatedStandingData(MatchesListing match, Team team, StandingsData data, bool isHome = true) {
+        StandingsData updated = new StandingsData {
+            TeamId = team.Id,
+            TeamName = team.Name,
+            GoalsScored = (isHome) ? data.GoalsScored + match.HomeGoals : data.GoalsScored + match.AwayGoals,
+            GoalsAgainst = (isHome) ? data.GoalsAgainst + match.AwayGoals : data.GoalsAgainst + match.HomeGoals,
+            GamesPlayed = data.GamesPlayed += 1
+        };
+        if (isHome) {
+            updated.Wins = (match.HomeGoals > match.AwayGoals) ? data.Wins += 1 : data.Wins;
+            updated.Ties = (match.HomeGoals == match.AwayGoals) ? data.Ties += 1 : data.Ties;
+            updated.Losses = (match.HomeGoals < match.AwayGoals) ? data.Losses += 1 : data.Losses;
+        }
+        else {
+            updated.Wins = (match.AwayGoals > match.HomeGoals) ? data.Wins += 1 : data.Wins;
+            updated.Ties = (match.AwayGoals == match.HomeGoals) ? data.Ties += 1 : data.Ties;
+            updated.Losses = (match.AwayGoals < match.HomeGoals) ? data.Losses += 1 : data.Losses;
+        }
+
+        updated.GoalDifference = updated.GoalsScored - updated.GoalsAgainst;
+        updated.Points = updated.Wins * 3 + updated.Ties;
+        return updated;
+    }
+}

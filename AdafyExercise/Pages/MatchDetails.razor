@@ -1,0 +1,71 @@
+﻿@page "/matches/{matchid:int}"
+
+@using AdafyExercise.Data
+@using System.Text.Json
+@using System.Text.Json.Serialization;
+@inject MatchesListingService MatchesListing
+@inject IHttpClientFactory ClientFactory
+
+<div>
+    <h1>Ottelutunnus: @matchId</h1>
+</div>
+
+@if (getMatchError || matchDetails == null) {
+    <p>Unable to get matches from API. Please try again later.</p>
+}
+else {
+    <h2>@matchDetails.MatchDate</h2>
+    <p><h2><img src="@matchDetails.HomeTeam.LogoUrl" />@matchDetails.HomeTeam.Name @matchDetails.HomeGoals</h2> - <h2><img src="@matchDetails.AwayTeam.LogoUrl" />@matchDetails.AwayTeam.Name @matchDetails.AwayGoals</h2></p>
+    @if (matchDetails.MatchEvents.Count != 0) {
+        <table>
+            <thead>
+                <tr>
+                    <th>Tapahtumahetki</th>
+                    <th>Tapahtuma</th>
+                    <th>Kuvaus</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var matchEvent in matchDetails.MatchEvents) {
+                <tr>
+                    <td>@(matchEvent.ElapsedSeconds / 60) min</td>
+                    <td><img src="@matchEvent.EventTypeIcon"/></td>
+                    <td>@matchEvent.Description</td>
+                </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    [Parameter]
+    public int matchId { get; set; }
+
+    private IEnumerable<MatchesListing> matches = Array.Empty<MatchesListing>();
+    private MatchesListing matchDetails;
+    private bool getMatchError;
+    private bool shouldRender;
+
+    protected override bool ShouldRender() => shouldRender;
+
+    protected override async Task OnInitializedAsync() {
+        var request = new HttpRequestMessage(HttpMethod.Get, "https://functionapp2018071101324.blob.core.windows.net/data/matches_latest.json");
+
+        var client = ClientFactory.CreateClient();
+
+        var response = await client.SendAsync(request);
+
+        if (response.IsSuccessStatusCode) {
+            using var responseStream = await response.Content.ReadAsStreamAsync();
+            matches = await JsonSerializer.DeserializeAsync<IEnumerable<MatchesListing>>(responseStream);
+            matchDetails = matches.Where(x => x.Id == matchId).ToArray()[0];
+        }
+        else {
+            getMatchError = true;
+        }
+
+        shouldRender = true;
+    }
+
+}
