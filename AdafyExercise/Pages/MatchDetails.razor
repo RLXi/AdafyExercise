@@ -1,41 +1,51 @@
 ﻿@page "/matches/{matchid:int}"
 
 @using AdafyExercise.Data
-@using System.Text.Json
-@using System.Text.Json.Serialization;
-@inject MatchesListingService MatchesListing
-@inject IHttpClientFactory ClientFactory
+@inject MatchesListingService MatchesService
 
-<div>
-    <h1>Ottelutunnus: @matchId</h1>
+<div class="has-text-white">
+    <h1 class="is-size-1">Ottelutunnus: @matchId</h1>
 </div>
 
 @if (getMatchError || matchDetails == null) {
-    <p>Unable to get matches from API. Please try again later.</p>
+<article class="message is-danger">
+    <div class="message-header"><p>Warning</p></div>
+    <div class="message-body">
+        <p>Unable to get matches from API. Please try again later.</p>
+    </div>
+</article>
 }
 else {
-    <h2>@matchDetails.MatchDate</h2>
-    <p><h2><img src="@matchDetails.HomeTeam.LogoUrl" />@matchDetails.HomeTeam.Name @matchDetails.HomeGoals</h2> - <h2><img src="@matchDetails.AwayTeam.LogoUrl" />@matchDetails.AwayTeam.Name @matchDetails.AwayGoals</h2></p>
+<div>
+    <div class="is-flex is-flex-direction-row is-justify-content-space-between">
+        <TeamCard team="@matchDetails.HomeTeam" isHome="true"/>
+        <div class="is-align-self-center">
+            <h1 class="is-size-1 has-text-white">@matchDetails.HomeGoals - @matchDetails.AwayGoals</h1>
+        </div>
+        <TeamCard team="@matchDetails.AwayTeam" />
+    </div>
+    <h4 class="is-size-4 has-text-white mt-5">Ottelu pelattu @matchDetails.MatchDate.ToString("dd/MM/yyyy")</h4>
     @if (matchDetails.MatchEvents.Count != 0) {
-        <table>
+        <table class="table is-striped is-fullwidth is-semitransparent mt-5">
             <thead>
                 <tr>
-                    <th>Tapahtumahetki</th>
-                    <th>Tapahtuma</th>
+                    <th class="has-text-centered">Tapahtumahetki</th>
+                    <th class="has-text-centered">Tapahtuma</th>
                     <th>Kuvaus</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var matchEvent in matchDetails.MatchEvents) {
-                <tr>
-                    <td>@(matchEvent.ElapsedSeconds / 60) min</td>
-                    <td><img src="@matchEvent.EventTypeIcon"/></td>
-                    <td>@matchEvent.Description</td>
-                </tr>
+                    <tr>
+                        <td class="has-text-centered">@(matchEvent.ElapsedSeconds / 60)'</td>
+                        <td class="has-text-centered"><img src="@matchEvent.EventTypeIcon" /></td>
+                        <td>@matchEvent.Description</td>
+                    </tr>
                 }
             </tbody>
         </table>
     }
+</div>
 }
 
 @code {
@@ -50,22 +60,13 @@ else {
     protected override bool ShouldRender() => shouldRender;
 
     protected override async Task OnInitializedAsync() {
-        var request = new HttpRequestMessage(HttpMethod.Get, "https://functionapp2018071101324.blob.core.windows.net/data/matches_latest.json");
-
-        var client = ClientFactory.CreateClient();
-
-        var response = await client.SendAsync(request);
-
-        if (response.IsSuccessStatusCode) {
-            using var responseStream = await response.Content.ReadAsStreamAsync();
-            matches = await JsonSerializer.DeserializeAsync<IEnumerable<MatchesListing>>(responseStream);
+        matches = await MatchesService.FetchData();
+        if (matches.Count() != 0) {
             matchDetails = matches.Where(x => x.Id == matchId).ToArray()[0];
         }
         else {
             getMatchError = true;
         }
-
         shouldRender = true;
     }
-
 }
