@@ -65,17 +65,17 @@ else {
             foreach (MatchesListing match in matches) {
                 // Add bare standings data for teams
                 if (!standingsList.Any(p => p.TeamId == match.HomeTeam.Id)) {
-                    standingsList.Add(CreateStandingData(match, match.HomeTeam));
+                    standingsList.Add(CreateStandingData(match.HomeTeam));
                 }
                 if (!standingsList.Any(p => p.TeamId == match.AwayTeam.Id)) {
-                    standingsList.Add(CreateStandingData(match, match.AwayTeam));
+                    standingsList.Add(CreateStandingData(match.AwayTeam));
                 }
 
                 // Update standings data
                 int homeTeamIndex = standingsList.FindIndex(p => p.TeamId == match.HomeTeam.Id);
                 int awayTeamIndex = standingsList.FindIndex(p => p.TeamId == match.AwayTeam.Id);
-                UpdateStandingData(match, match.HomeTeam, standingsList[homeTeamIndex]);
-                UpdateStandingData(match, match.AwayTeam, standingsList[awayTeamIndex], false);
+                UpdateStandingData(match, standingsList[homeTeamIndex]);
+                UpdateStandingData(match, standingsList[awayTeamIndex], false);
             }
 
             // The match data didn't produce situation, where two teams have equal amount of points.
@@ -111,7 +111,7 @@ else {
         shouldRender = true;
     }
     
-    private StandingsData CreateStandingData(MatchesListing match, Team team) {
+    private StandingsData CreateStandingData(Team team) {
         StandingsData newStanding = new StandingsData {
             TeamId = team.Id,
             TeamRanking = 0,
@@ -129,7 +129,7 @@ else {
         return newStanding;
     }
 
-    private void UpdateStandingData(MatchesListing match, Team team, StandingsData data, bool isHome = true) {
+    private void UpdateStandingData(MatchesListing match, StandingsData data, bool isHome = true) {
         data.GoalsScored = (isHome) ? data.GoalsScored + match.HomeGoals : data.GoalsScored + match.AwayGoals;
         data.GoalsAgainst = (isHome) ? data.GoalsAgainst + match.AwayGoals : data.GoalsAgainst + match.HomeGoals;
         data.GoalDifference = data.GoalsScored - data.GoalsAgainst;
